@@ -19,9 +19,16 @@ module.exports = async function handler(req, res) {
         // Generate unique code
         let code;
         let exists = true;
-        while (exists) {
+        let attempts = 0;
+        while (exists && attempts < 10) {
             code = generateSessionCode();
-            exists = await redis.exists(`session:${code}`);
+            try {
+                exists = await redis.exists(`session:${code}`);
+            } catch (e) {
+                console.error('Redis exists check error:', e);
+                break;
+            }
+            attempts++;
         }
 
         const session = {
@@ -35,10 +42,19 @@ module.exports = async function handler(req, res) {
         };
 
         // Store session
-        await redis.set(`session:${code}`, session);
+        try {
+            await redis.set(`session:${code}`, session);
+        } catch (e) {
+            console.error('Redis set error:', e);
+            throw e;
+        }
 
         // Add to sessions index
-        await redis.sadd('sessions:all', code);
+        try {
+            await redis.sadd('sessions:all', code);
+        } catch (e) {
+            console.error('Redis sadd error:', e);
+        }
 
         return res.status(201).json({
             success: true,
@@ -47,7 +63,7 @@ module.exports = async function handler(req, res) {
             createdAt: session.createdAt,
         });
     } catch (err) {
-        console.error('Create session error:', err);
-        return res.status(500).json({ error: 'Server error' });
+        console.error('Create session error:', err.message, err.stack);
+        return res.status(500).json({ error: 'Server error', details: err.message });
     }
 };
