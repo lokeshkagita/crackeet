@@ -6,6 +6,7 @@ const { app, BrowserWindow, shell, ipcMain } = require('electron');
 const { createWindow, updateGlobalShortcuts } = require('./utils/window');
 const { setupGeminiIpcHandlers, stopMacOSAudioCapture, sendToRenderer } = require('./utils/gemini');
 const storage = require('./storage');
+const { validateSessionCode } = require('./utils/sessionManager');
 
 const geminiSessionRef = { current: null };
 let mainWindow = null;
@@ -289,6 +290,21 @@ function setupGeneralIpcHandlers() {
             // Also save to storage
             storage.setKeybinds(newKeybinds);
             updateGlobalShortcuts(newKeybinds, mainWindow, sendToRenderer, geminiSessionRef);
+        }
+    });
+
+    // Session validation
+    ipcMain.handle('validate-session-code', async (event, code) => {
+        try {
+            const result = await validateSessionCode(code);
+            if (result.success) {
+                // Store the API key automatically
+                storage.setGroqApiKey(result.groqApiKey);
+            }
+            return result;
+        } catch (error) {
+            console.error('Error validating session:', error);
+            return { success: false, error: error.message };
         }
     });
 

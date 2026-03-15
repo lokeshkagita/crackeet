@@ -63,7 +63,7 @@ export class OnboardingView extends LitElement {
             flex-direction: column;
             align-items: center;
             text-align: center;
-            max-width: 400px;
+            max-width: 420px;
             padding: var(--space-xl);
             gap: var(--space-md);
         }
@@ -106,6 +106,51 @@ export class OnboardingView extends LitElement {
             border-color: rgba(0, 0, 0, 0.3);
         }
 
+        .session-input {
+            width: 100%;
+            padding: 14px 16px;
+            border: 1px solid rgba(0, 0, 0, 0.12);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(8px);
+            color: #111111;
+            font-size: 16px;
+            font-family: var(--font);
+            font-weight: 600;
+            text-align: center;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        .session-input::placeholder {
+            color: #999999;
+            font-weight: 400;
+            letter-spacing: 0;
+            text-transform: none;
+            font-size: 13px;
+        }
+
+        .session-input:focus {
+            outline: none;
+            border-color: rgba(0, 0, 0, 0.3);
+        }
+
+        .session-input.error {
+            border-color: #ef4444;
+        }
+
+        .error-text {
+            color: #ef4444;
+            font-size: 12px;
+            margin-top: -4px;
+        }
+
+        .success-text {
+            color: #22c55e;
+            font-size: 12px;
+            margin-top: -4px;
+        }
+
         .actions {
             display: flex;
             flex-direction: column;
@@ -130,6 +175,11 @@ export class OnboardingView extends LitElement {
             opacity: 0.85;
         }
 
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
         .btn-back {
             background: none;
             border: none;
@@ -142,21 +192,61 @@ export class OnboardingView extends LitElement {
         .btn-back:hover {
             color: #555555;
         }
+
+        .form-group {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            text-align: left;
+        }
+
+        .form-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: #888888;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top-color: #ffffff;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+            display: inline-block;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
     `;
 
     static properties = {
         currentSlide: { type: Number },
-        contextText: { type: String },
+        sessionCode: { type: String },
+        jdText: { type: String },
+        resumeText: { type: String },
         onComplete: { type: Function },
+        _validating: { state: true },
+        _validationError: { state: true },
+        _validationSuccess: { state: true },
     };
 
     constructor() {
         super();
         this.currentSlide = 0;
-        this.contextText = '';
+        this.sessionCode = '';
+        this.jdText = '';
+        this.resumeText = '';
         this.onComplete = () => {};
         this._animId = null;
         this._time = 0;
+        this._validating = false;
+        this._validationError = '';
+        this._validationSuccess = false;
     }
 
     firstUpdated() {
@@ -296,23 +386,81 @@ export class OnboardingView extends LitElement {
         draw();
     }
 
-    handleContextInput(e) {
-        this.contextText = e.target.value;
+    handleSessionCodeInput(e) {
+        this.sessionCode = e.target.value;
+        this._validationError = '';
+        this._validationSuccess = false;
+    }
+
+    handleJdInput(e) {
+        this.jdText = e.target.value;
+    }
+
+    handleResumeInput(e) {
+        this.resumeText = e.target.value;
+    }
+
+    async validateSession() {
+        if (!this.sessionCode.trim()) {
+            this._validationError = 'Please enter a session code';
+            this.requestUpdate();
+            return;
+        }
+
+        this._validating = true;
+        this._validationError = '';
+        this.requestUpdate();
+
+        try {
+            const result = await cheatingDaddy.storage.validateSessionCode(this.sessionCode.trim());
+
+            if (result.success) {
+                this._validationSuccess = true;
+                this._validationError = '';
+                this.requestUpdate();
+
+                // Move to next slide after brief success feedback
+                setTimeout(() => {
+                    this.currentSlide = 2;
+                    this.requestUpdate();
+                }, 500);
+            } else {
+                this._validationError = result.error || 'Invalid session code';
+                this._validationSuccess = false;
+            }
+        } catch (err) {
+            this._validationError = 'Connection error. Check your internet.';
+            this._validationSuccess = false;
+        }
+
+        this._validating = false;
+        this.requestUpdate();
     }
 
     async completeOnboarding() {
-        if (this.contextText.trim()) {
-            await cheatingDaddy.storage.updatePreference('customPrompt', this.contextText.trim());
+        // Build context from JD + Resume
+        const contextParts = [];
+        if (this.jdText.trim()) {
+            contextParts.push(`JOB DESCRIPTION:\n${this.jdText.trim()}`);
+        }
+        if (this.resumeText.trim()) {
+            contextParts.push(`RESUME:\n${this.resumeText.trim()}`);
+        }
+        const fullContext = contextParts.join('\n\n---\n\n');
+
+        if (fullContext) {
+            await cheatingDaddy.storage.updatePreference('customPrompt', fullContext);
         }
         await cheatingDaddy.storage.updateConfig('onboarded', true);
         this.onComplete();
     }
 
     renderSlide() {
+        // Slide 0: Welcome
         if (this.currentSlide === 0) {
             return html`
                 <div class="slide">
-                    <div class="slide-title">Cheating Daddy</div>
+                    <div class="slide-title">A2</div>
                     <div class="slide-text">Real-time AI that listens, watches, and helps during interviews, meetings, and exams.</div>
                     <div class="actions">
                         <button class="btn-primary" @click=${() => { this.currentSlide = 1; }}>Continue</button>
@@ -321,19 +469,62 @@ export class OnboardingView extends LitElement {
             `;
         }
 
+        // Slide 1: Session Code
+        if (this.currentSlide === 1) {
+            return html`
+                <div class="slide">
+                    <div class="slide-title">Enter Session Code</div>
+                    <div class="slide-text">Enter the session code provided to you to get started.</div>
+                    <input
+                        class="session-input ${this._validationError ? 'error' : ''}"
+                        type="text"
+                        placeholder="e.g. CRACK-7X9K"
+                        .value=${this.sessionCode}
+                        @input=${this.handleSessionCodeInput}
+                        @keydown=${(e) => { if (e.key === 'Enter') this.validateSession(); }}
+                    />
+                    ${this._validationError ? html`<div class="error-text">${this._validationError}</div>` : ''}
+                    ${this._validationSuccess ? html`<div class="success-text">Session validated!</div>` : ''}
+                    <div class="actions">
+                        <button
+                            class="btn-primary"
+                            @click=${this.validateSession}
+                            ?disabled=${this._validating}
+                        >
+                            ${this._validating ? html`<span class="spinner"></span>` : 'Validate'}
+                        </button>
+                        <button class="btn-back" @click=${() => { this.currentSlide = 0; }}>Back</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Slide 2: JD + Resume
         return html`
             <div class="slide">
-                <div class="slide-title">Add context</div>
-                <div class="slide-text">Paste your resume or any info the AI should know. You can skip this and add it later.</div>
-                <textarea
-                    class="context-input"
-                    placeholder="Resume, job description, notes..."
-                    .value=${this.contextText}
-                    @input=${this.handleContextInput}
-                ></textarea>
+                <div class="slide-title">Your Details</div>
+                <div class="slide-text">Paste your job description and resume so AI can give tailored answers.</div>
+                <div class="form-group">
+                    <label class="form-label">Job Description</label>
+                    <textarea
+                        class="context-input"
+                        placeholder="Paste the job description here..."
+                        .value=${this.jdText}
+                        @input=${this.handleJdInput}
+                    ></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Resume</label>
+                    <textarea
+                        class="context-input"
+                        placeholder="Paste your resume here..."
+                        .value=${this.resumeText}
+                        @input=${this.handleResumeInput}
+                    ></textarea>
+                </div>
                 <div class="actions">
                     <button class="btn-primary" @click=${this.completeOnboarding}>Get Started</button>
-                    <button class="btn-back" @click=${() => { this.currentSlide = 0; }}>Back</button>
+                    <button class="btn-back" @click=${() => { this.currentSlide = 1; }}>Back</button>
                 </div>
             </div>
         `;

@@ -106,6 +106,11 @@ const storage = {
     async getTodayLimits() {
         const result = await ipcRenderer.invoke('storage:get-today-limits');
         return result.success ? result.data : { flash: { count: 0 }, flashLite: { count: 0 } };
+    },
+
+    // Session validation
+    async validateSessionCode(code) {
+        return ipcRenderer.invoke('validate-session-code', code);
     }
 };
 
@@ -140,6 +145,18 @@ function arrayBufferToBase64(buffer) {
     return btoa(binary);
 }
 
+async function initializeGroq(profile = 'interview', language = 'en-US') {
+    const prefs = await storage.getPreferences();
+    const success = await ipcRenderer.invoke('initialize-groq', profile, prefs.customPrompt || '', language);
+    if (success) {
+        cheatingDaddy.setStatus('Groq ready');
+        return true;
+    } else {
+        cheatingDaddy.setStatus('error');
+        return false;
+    }
+}
+
 async function initializeGemini(profile = 'interview', language = 'en-US') {
     const apiKey = await storage.getApiKey();
     if (apiKey) {
@@ -170,24 +187,7 @@ async function initializeLocal(profile = 'interview') {
     }
 }
 
-async function initializeCloud(profile = 'interview') {
-    const creds = await storage.getCredentials();
-    const token = creds.cloudToken;
-    if (!token || !token.trim()) {
-        cheatingDaddy.setStatus('error');
-        return false;
-    }
-
-    const prefs = await storage.getPreferences();
-    const success = await ipcRenderer.invoke('initialize-cloud', token, profile, prefs.customPrompt || '');
-    if (success) {
-        cheatingDaddy.setStatus('Live');
-        return true;
-    } else {
-        cheatingDaddy.setStatus('error');
-        return false;
-    }
-}
+// Cloud mode removed
 
 // Listen for status updates
 ipcRenderer.on('update-status', (event, status) => {
@@ -947,7 +947,7 @@ const theme = {
         root.style.setProperty('--scrollbar-background', bgBase);
     },
 
-    apply(themeName, alpha = 0.8) {
+    apply(themeName, alpha = 0.35) {
         const colors = this.get(themeName);
         this.current = themeName;
         const root = document.documentElement;
@@ -992,7 +992,7 @@ const theme = {
         try {
             const prefs = await storage.getPreferences();
             const themeName = prefs.theme || 'dark';
-            const alpha = prefs.backgroundTransparency ?? 0.8;
+            const alpha = prefs.backgroundTransparency ?? 0.35;
             this.apply(themeName, alpha);
             return themeName;
         } catch (err) {
@@ -1026,8 +1026,8 @@ const cheatingDaddy = {
     updateCurrentResponse: response => cheatingDaddyApp.updateCurrentResponse(response),
 
     // Core functionality
+    initializeGroq,
     initializeGemini,
-    initializeCloud,
     initializeLocal,
     startCapture,
     stopCapture,
