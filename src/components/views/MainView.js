@@ -808,6 +808,13 @@ export class MainView extends LitElement {
     // ── Groq-only mode ──
 
     _renderGroqMode() {
+        // If key is already set (from session code), just show start button
+        if (this._groqKey && this._groqKey.trim()) {
+            return html`
+                ${this._renderStartButton()}
+            `;
+        }
+
         return html`
             <div class="form-group">
                 <label class="form-label">Groq API Key</label>
@@ -833,11 +840,13 @@ export class MainView extends LitElement {
         const helpIcon = html`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M3 12a9 9 0 1 0 18 0a9 9 0 1 0-18 0m9 5v.01" /><path d="M12 13.5a1.5 1.5 0 0 1 1-1.5a2.6 2.6 0 1 0-3-4" /></g></svg>`;
         const closeIcon = html`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 6L6 18M6 6l12 12" /></svg>`;
 
+        const hasKey = this._groqKey && this._groqKey.trim();
+
         return html`
             <div class="form-wrapper">
                 <div class="page-title">A2</div>
                 <div class="page-subtitle">
-                    Enter your Groq API key — voice and text powered by Groq only
+                    ${hasKey ? 'Session ready. Click start to begin.' : 'Enter your Groq API key — voice and text powered by Groq only'}
                 </div>
 
                 ${this._renderGroqMode()}
