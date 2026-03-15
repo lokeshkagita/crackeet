@@ -1,8 +1,8 @@
 {
-    "name": "cheating-daddy",
-    "productName": "cheating-daddy",
+    "name": "a2",
+    "productName": "A2",
     "version": "0.7.0",
-    "description": "cheating daddy",
+    "description": "A2 - Real-time AI assistant",
     "main": "src/index.js",
     "scripts": {
         "start": "electron-forge start",
@@ -12,15 +12,13 @@
         "lint": "echo \"No linting configured\""
     },
     "keywords": [
-        "cheating daddy",
-        "cheating daddy ai",
-        "cheating daddy ai assistant",
-        "cheating daddy ai assistant for interviews",
-        "cheating daddy ai assistant for interviews"
+        "a2",
+        "ai assistant",
+        "real-time ai"
     ],
     "author": {
-        "name": "sohzm",
-        "email": "sohambharambe9@gmail.com"
+        "name": "Lokesh",
+        "email": "lokeshlucky2509@gmail.com"
     },
     "license": "GPL-3.0",
     "dependencies": {

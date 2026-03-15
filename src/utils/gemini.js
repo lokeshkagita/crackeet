@@ -1,10 +1,49 @@
+/**
+ * VOICE LISTEN-REPLY LOGIC (continuous listening and responding):
+ *
+ * 1. AUDIO CAPTURE (platform-specific):
+ *    - Windows/Linux: getDisplayMedia captures screen + loopback/system audio.
+ *      renderer.js creates AudioContext -> ScriptProcessor -> chunks PCM at 24kHz.
+ *      Each chunk (0.1s) is sent via IPC "send-audio-content" to main process.
+ *    - macOS: SystemAudioDump binary captures system audio; chunks sent to sendAudioToGemini.
+ *    - Microphone (optional): getUserMedia -> "send-mic-audio-content" when audioMode is mic_only or both.
+ *
+ * 2. AUDIO -> MAIN PROCESS:
+ *    - ipcMain handles "send-audio-content" / "send-mic-audio-content".
+ *    - Routes to: cloud (WebSocket), local (whisper+ollama), or byok (Gemini Live).
+ *
+ * 3. GEMINI LIVE (byok mode):
+ *    - client.live.connect() opens WebSocket to Google.
+ *    - Audio chunks streamed via session.sendRealtimeInput({ audio: { data, mimeType } }).
+ *    - Gemini transcribes in real time; server sends inputTranscription in onmessage.
+ *
+ * 4. TURN DETECTION:
+ *    - When message.serverContent.generationComplete is true, the full transcription is ready.
+ *    - currentTranscription holds the accumulated text (with speaker labels if diarization enabled).
+ *
+ * 5. RESPONSE GENERATION (text reply, not Gemini TTS):
+ *    - If Groq key configured: sendToGroq(transcription) -> Groq API -> streamed text.
+ *    - Else: sendToGemma(transcription) -> Gemini generateContentStream -> streamed text.
+ *    - Response streamed to renderer via "new-response" / "update-response" IPC.
+ *
+ * 6. LOOP:
+ *    - After response ends, status set to "Listening...". Audio capture continues.
+ *    - Next speech -> transcription -> response -> repeat.
+ */
 const { GoogleGenAI, Modality } = require('@google/genai');
 const { BrowserWindow, ipcMain } = require('electron');
 const { spawn } = require('child_process');
 const { saveDebugAudio } = require('../audioUtils');
 const { getSystemPrompt } = require('./prompts');
-const { getAvailableModel, incrementLimitCount, getApiKey, getGroqApiKey, incrementCharUsage, getModelForToday } = require('../storage');
-const { connectCloud, sendCloudAudio, sendCloudText, sendCloudImage, closeCloud, isCloudActive, setOnTurnComplete } = require('./cloud');
+const { getAvailableModel, incrementLimitCount, getApiKey, getGroqApiKey, incrementCharUsage, getModelForToday, getGeminiModel } = require('../storage');
+// Cloud mode removed — stubs to prevent crashes in dead code paths
+const connectCloud = () => Promise.reject(new Error('Cloud mode removed'));
+const sendCloudAudio = () => {};
+const sendCloudText = () => {};
+const sendCloudImage = () => false;
+const closeCloud = () => {};
+const isCloudActive = () => false;
+const setOnTurnComplete = () => {};
 
 // Lazy-loaded to avoid circular dependency (localai.js imports from gemini.js)
 let _localai = null;
@@ -13,8 +52,14 @@ function getLocalAi() {
     return _localai;
 }
 
+let _groqProvider = null;
+function getGroqProvider() {
+    if (!_groqProvider) _groqProvider = require('./groqProvider');
+    return _groqProvider;
+}
+
 // Provider mode: 'byok', 'cloud', or 'local'
-let currentProviderMode = 'byok';
+let currentProviderMode = 'groq';
 
 // Groq conversation history for context
 let groqConversationHistory = [];
@@ -381,8 +426,9 @@ async function sendToGemma(transcription) {
             ...messages
         ];
 
+        const model = getGeminiModel();
         const response = await ai.models.generateContentStream({
-            model: 'gemma-3-27b-it',
+            model: model,
             contents: messagesWithSystem,
         });
 
@@ -403,7 +449,7 @@ async function sendToGemma(transcription) {
         const inputChars = systemPromptChars + historyChars;
         const outputChars = fullText.length;
 
-        incrementCharUsage('gemini', 'gemma-3-27b-it', inputChars + outputChars);
+        incrementCharUsage('gemini', model, inputChars + outputChars);
 
         if (fullText.trim()) {
             groqConversationHistory.push({
@@ -462,9 +508,11 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
         initializeNewSession(profile, customPrompt);
     }
 
+    // Live API requires native-audio model; gemini-3-flash-preview does NOT support bidiGenerateContent.
+    const LIVE_MODEL = 'gemini-2.5-flash-native-audio-preview-09-2025';
     try {
         const session = await client.live.connect({
-            model: 'gemini-2.5-flash-native-audio-preview-09-2025',
+            model: LIVE_MODEL,
             callbacks: {
                 onopen: function () {
                     sendToRenderer('update-status', 'Live session connected');
@@ -706,6 +754,8 @@ async function startMacOSAudioCapture(geminiSessionRef) {
                 sendCloudAudio(monoChunk);
             } else if (currentProviderMode === 'local') {
                 getLocalAi().processLocalAudio(monoChunk);
+            } else if (currentProviderMode === 'groq') {
+                getGroqProvider().processGroqAudio(monoChunk);
             } else {
                 const base64Data = monoChunk.toString('base64');
                 sendAudioToGemini(base64Data, geminiSessionRef);
@@ -777,8 +827,7 @@ async function sendAudioToGemini(base64Data, geminiSessionRef) {
 }
 
 async function sendImageToGeminiHttp(base64Data, prompt) {
-    // Get available model based on rate limits
-    const model = getAvailableModel();
+    const model = getGeminiModel();
 
     const apiKey = getApiKey();
     if (!apiKey) {
@@ -869,8 +918,14 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         currentProviderMode = 'local';
         const success = await getLocalAi().initializeLocalSession(ollamaHost, ollamaModel, whisperModel, profile, customPrompt);
         if (!success) {
-            currentProviderMode = 'byok';
+            currentProviderMode = 'groq';
         }
+        return success;
+    });
+
+    ipcMain.handle('initialize-groq', async (event, profile = 'interview', customPrompt = '', language = 'en-US') => {
+        currentProviderMode = 'groq';
+        const success = await getGroqProvider().initializeGroqSession(profile, customPrompt, language);
         return success;
     });
 
@@ -895,7 +950,17 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                 return { success: false, error: error.message };
             }
         }
-        if (!geminiSessionRef.current) return { success: false, error: 'No active Gemini session' };
+        if (currentProviderMode === 'groq') {
+            try {
+                const pcmBuffer = Buffer.from(data, 'base64');
+                getGroqProvider().processGroqAudio(pcmBuffer);
+                return { success: true };
+            } catch (error) {
+                console.error('Error sending Groq audio:', error);
+                return { success: false, error: error.message };
+            }
+        }
+        if (!geminiSessionRef.current) return { success: false, error: 'No active session' };
         try {
             process.stdout.write('.');
             await geminiSessionRef.current.sendRealtimeInput({
@@ -930,7 +995,17 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                 return { success: false, error: error.message };
             }
         }
-        if (!geminiSessionRef.current) return { success: false, error: 'No active Gemini session' };
+        if (currentProviderMode === 'groq') {
+            try {
+                const pcmBuffer = Buffer.from(data, 'base64');
+                getGroqProvider().processGroqAudio(pcmBuffer);
+                return { success: true };
+            } catch (error) {
+                console.error('Error sending Groq mic audio:', error);
+                return { success: false, error: error.message };
+            }
+        }
+        if (!geminiSessionRef.current) return { success: false, error: 'No active session' };
         try {
             process.stdout.write(',');
             await geminiSessionRef.current.sendRealtimeInput({
@@ -972,7 +1047,12 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                 return result;
             }
 
-            // Use HTTP API instead of realtime session
+            if (currentProviderMode === 'groq') {
+                const result = await getGroqProvider().sendGroqImage(data, prompt);
+                return result;
+            }
+
+            // Use HTTP API instead of realtime session (legacy Gemini)
             const result = await sendImageToGeminiHttp(data, prompt);
             return result;
         } catch (error) {
@@ -1007,17 +1087,25 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
             }
         }
 
-        if (!geminiSessionRef.current) return { success: false, error: 'No active Gemini session' };
+        if (currentProviderMode === 'groq') {
+            try {
+                console.log('Sending text to Groq:', text);
+                return await getGroqProvider().sendGroqText(text.trim());
+            } catch (error) {
+                console.error('Error sending Groq text:', error);
+                return { success: false, error: error.message };
+            }
+        }
+
+        if (!geminiSessionRef.current) return { success: false, error: 'No active session' };
 
         try {
             console.log('Sending text message:', text);
-
             if (hasGroqKey()) {
                 sendToGroq(text.trim());
             } else {
                 sendToGemma(text.trim());
             }
-
             await geminiSessionRef.current.sendRealtimeInput({ text: text.trim() });
             return { success: true };
         } catch (error) {
@@ -1059,13 +1147,19 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
 
             if (currentProviderMode === 'cloud') {
                 closeCloud();
-                currentProviderMode = 'byok';
+                currentProviderMode = 'groq';
                 return { success: true };
             }
 
             if (currentProviderMode === 'local') {
                 getLocalAi().closeLocalSession();
-                currentProviderMode = 'byok';
+                currentProviderMode = 'groq';
+                return { success: true };
+            }
+
+            if (currentProviderMode === 'groq') {
+                getGroqProvider().closeGroqSession();
+                currentProviderMode = 'groq';
                 return { success: true };
             }
 

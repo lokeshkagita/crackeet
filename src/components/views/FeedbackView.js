@@ -159,23 +159,12 @@ export class FeedbackView extends LitElement {
                 body.email = this._feedbackEmail.trim();
             }
 
-            const res = await fetch('https://api.cheatingdaddy.com/api/feedback', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
-            });
-
-            if (res.ok) {
-                this._feedbackText = '';
-                this._feedbackEmail = '';
-                this._feedbackStatus = 'success:Feedback sent, thank you!';
-            } else if (res.status === 429) {
-                this._feedbackStatus = 'error:Please wait a few minutes before sending again';
-            } else {
-                this._feedbackStatus = 'error:Failed to send feedback';
-            }
+            // TODO: Replace with your own feedback endpoint
+            this._feedbackText = '';
+            this._feedbackEmail = '';
+            this._feedbackStatus = 'success:Feedback noted, thank you!';
         } catch (e) {
-            this._feedbackStatus = 'error:Could not connect to server';
+            this._feedbackStatus = 'error:Could not process feedback';
         }
 
         this._feedbackSending = false;

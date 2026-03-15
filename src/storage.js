@@ -17,6 +17,7 @@ const DEFAULT_CREDENTIALS = {
 };
 
 const DEFAULT_PREFERENCES = {
+    geminiModel: 'gemini-3-flash-preview',
     customPrompt: '',
     selectedProfile: 'interview',
     selectedLanguage: 'en-US',
@@ -25,7 +26,7 @@ const DEFAULT_PREFERENCES = {
     advancedMode: false,
     audioMode: 'speaker_only',
     fontSize: 'medium',
-    backgroundTransparency: 0.8,
+    backgroundTransparency: 0.35,
     googleSearchEnabled: false,
     ollamaHost: 'http://127.0.0.1:11434',
     ollamaModel: 'llama3.1',
@@ -44,11 +45,11 @@ function getConfigDir() {
     let configDir;
 
     if (platform === 'win32') {
-        configDir = path.join(os.homedir(), 'AppData', 'Roaming', 'cheating-daddy-config');
+        configDir = path.join(os.homedir(), 'AppData', 'Roaming', 'a2-config');
     } else if (platform === 'darwin') {
-        configDir = path.join(os.homedir(), 'Library', 'Application Support', 'cheating-daddy-config');
+        configDir = path.join(os.homedir(), 'Library', 'Application Support', 'a2-config');
     } else {
-        configDir = path.join(os.homedir(), '.config', 'cheating-daddy-config');
+        configDir = path.join(os.homedir(), '.config', 'a2-config');
     }
 
     return configDir;
@@ -189,7 +190,8 @@ function setCredentials(credentials) {
 }
 
 function getApiKey() {
-    return getCredentials().apiKey || '';
+    const key = getCredentials().apiKey || '';
+    return key || '';
 }
 
 function setApiKey(apiKey) {
@@ -221,6 +223,10 @@ function updatePreference(key, value) {
     const preferences = getPreferences();
     preferences[key] = value;
     return writeJsonFile(getPreferencesPath(), preferences);
+}
+
+function getGeminiModel() {
+    return getPreferences().geminiModel || 'gemini-3-flash-preview';
 }
 
 // ============ KEYBINDS ============
@@ -267,8 +273,12 @@ function getTodayLimits() {
         }
         if(!todayEntry.gemini) {
             todayEntry.gemini = {
-                'gemma-3-27b-it': { chars: 0 }
+                'gemma-3-27b-it': { chars: 0 },
+                'gemini-3-flash-preview': { chars: 0 }
             };
+        }
+        if(!todayEntry.gemini['gemini-3-flash-preview']) {
+            todayEntry.gemini['gemini-3-flash-preview'] = { chars: 0 };
         }
         setLimits(limits);
         return todayEntry;
@@ -287,7 +297,8 @@ function getTodayLimits() {
             'kimi-k2-instruct': { chars: 0, limit: 600000 }
         },
         gemini: {
-            'gemma-3-27b-it': { chars: 0 }
+            'gemma-3-27b-it': { chars: 0 },
+            'gemini-3-flash-preview': { chars: 0 }
         }
     };
     limits.data.push(newEntry);
@@ -527,5 +538,7 @@ module.exports = {
     deleteAllSessions,
 
     // Clear all
-    clearAllData
+    clearAllData,
+
+    getGeminiModel
 };

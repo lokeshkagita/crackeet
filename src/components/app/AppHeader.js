@@ -155,42 +155,6 @@ export class AppHeader extends LitElement {
     connectedCallback() {
         super.connectedCallback();
         this._startTimer();
-        this._checkForUpdates();
-    }
-
-    async _checkForUpdates() {
-        try {
-            const currentVersion = await cheatingDaddy.getVersion();
-            const response = await fetch('https://raw.githubusercontent.com/sohzm/cheating-daddy/refs/heads/master/package.json');
-            if (!response.ok) return;
-
-            const remotePackage = await response.json();
-            const remoteVersion = remotePackage.version;
-
-            if (this._isNewerVersion(remoteVersion, currentVersion)) {
-                this.updateAvailable = true;
-            }
-        } catch (err) {
-            console.log('Update check failed:', err.message);
-        }
-    }
-
-    _isNewerVersion(remote, current) {
-        const remoteParts = remote.split('.').map(Number);
-        const currentParts = current.split('.').map(Number);
-
-        for (let i = 0; i < Math.max(remoteParts.length, currentParts.length); i++) {
-            const r = remoteParts[i] || 0;
-            const c = currentParts[i] || 0;
-            if (r > c) return true;
-            if (r < c) return false;
-        }
-        return false;
-    }
-
-    async _openUpdatePage() {
-        const { ipcRenderer } = require('electron');
-        await ipcRenderer.invoke('open-external', 'https://cheatingdaddy.com');
     }
 
     disconnectedCallback() {
@@ -242,15 +206,15 @@ export class AppHeader extends LitElement {
 
     getViewTitle() {
         const titles = {
-            onboarding: 'Welcome to Cheating Daddy',
-            main: 'Cheating Daddy',
+            onboarding: 'Welcome to A2',
+            main: 'A2',
             customize: 'Customize',
             help: 'Help & Shortcuts',
             history: 'Conversation History',
             advanced: 'Advanced Tools',
-            assistant: 'Cheating Daddy',
+            assistant: 'A2',
         };
-        return titles[this.currentView] || 'Cheating Daddy';
+        return titles[this.currentView] || 'A2';
     }
 
     getElapsedTime() {

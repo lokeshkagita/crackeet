@@ -510,7 +510,7 @@ export class MainView extends LitElement {
         this.isInitializing = false;
         this.whisperDownloading = false;
 
-        this._mode = 'cloud';
+        this._mode = 'groq';
         this._token = '';
         this._geminiKey = '';
         this._groqKey = '';
@@ -538,7 +538,7 @@ export class MainView extends LitElement {
                 cheatingDaddy.storage.getCredentials().catch(() => ({})),
             ]);
 
-            this._mode = prefs.providerMode || 'cloud';
+            this._mode = 'groq';
 
             // Load keys
             this._token = creds.cloudToken || '';
@@ -571,18 +571,15 @@ export class MainView extends LitElement {
     updated(changedProperties) {
         super.updated(changedProperties);
         if (changedProperties.has('_mode')) {
-            // Stop old animation when switching modes
             if (this._animId) {
                 cancelAnimationFrame(this._animId);
                 this._animId = null;
             }
-            // Only start aurora for cloud mode
-            if (this._mode === 'cloud') {
+            if (this._mode === 'groq') {
                 this._initButtonAurora();
             }
         }
-        // Initial boot — no _mode change yet but need to start
-        if (!this._animId && this._mode === 'cloud') {
+        if (!this._animId && this._mode === 'groq') {
             this._initButtonAurora();
         }
     }
@@ -755,34 +752,17 @@ export class MainView extends LitElement {
     _handleStart() {
         if (this.isInitializing) return;
 
-        if (this._mode === 'cloud') {
-            if (!this._token.trim()) {
-                this._tokenError = true;
-                this.requestUpdate();
-                return;
-            }
-        } else if (this._mode === 'byok') {
-            if (!this._geminiKey.trim()) {
-                this._keyError = true;
-                this.requestUpdate();
-                return;
-            }
-        } else if (this._mode === 'local') {
-            // Local mode doesn't need API keys, just Ollama host
-            if (!this._ollamaHost.trim()) {
-                return;
-            }
+        if (!this._groqKey.trim()) {
+            this._keyError = true;
+            this.requestUpdate();
+            return;
         }
 
         this.onStart();
     }
 
     triggerApiKeyError() {
-        if (this._mode === 'cloud') {
-            this._tokenError = true;
-        } else {
-            this._keyError = true;
-        }
+        this._keyError = true;
         this.requestUpdate();
         setTimeout(() => {
             this._tokenError = false;
@@ -825,145 +805,25 @@ export class MainView extends LitElement {
         `;
     }
 
-    // ── Cloud mode ──
+    // ── Groq-only mode ──
 
-    _renderCloudMode() {
+    _renderGroqMode() {
         return html`
-            <div class="form-group">
-                <label class="form-label">Invite Code</label>
-                <input
-                    type="password"
-                    placeholder="Enter your invite code"
-                    .value=${this._token}
-                    @input=${e => this._saveToken(e.target.value)}
-                    class=${this._tokenError ? 'error' : ''}
-                />
-                <div class="form-hint">DM soham to get your invite code</div>
-            </div>
-
-            ${this._renderStartButton()}
-            ${this._renderDivider()}
-
-            <div class="mode-cards">
-                <div class="mode-card" @click=${() => this._saveMode('byok')}>
-                    <span class="mode-card-title">Use your API keys</span>
-                    <span class="mode-card-desc">Bring your own Gemini / Groq keys</span>
-                </div>
-                <div class="mode-card" @click=${() => this._saveMode('local')}>
-                    <span class="mode-card-title">Use local AI</span>
-                    <span class="mode-card-desc">Run Ollama + Whisper on your machine</span>
-                </div>
-            </div>
-        `;
-    }
-
-    // ── BYOK mode ──
-
-    _renderByokMode() {
-        return html`
-            <div class="form-group">
-                <label class="form-label">Gemini API Key</label>
-                <input
-                    type="password"
-                    placeholder="Required"
-                    .value=${this._geminiKey}
-                    @input=${e => this._saveGeminiKey(e.target.value)}
-                    class=${this._keyError ? 'error' : ''}
-                />
-                <div class="form-hint">
-                    <span class="link" @click=${() => this.onExternalLink('https://aistudio.google.com/apikey')}>Get Gemini key</span>
-                </div>
-            </div>
-
             <div class="form-group">
                 <label class="form-label">Groq API Key</label>
                 <input
                     type="password"
-                    placeholder="Optional"
+                    placeholder="gsk_..."
                     .value=${this._groqKey}
                     @input=${e => this._saveGroqKey(e.target.value)}
+                    class=${this._keyError ? 'error' : ''}
                 />
                 <div class="form-hint">
-                    <span class="link" @click=${() => this.onExternalLink('https://console.groq.com/keys')}>Get Groq key</span>
+                    <span class="link" @click=${() => this.onExternalLink('https://console.groq.com/keys')}>Get Groq API key</span>
                 </div>
             </div>
 
             ${this._renderStartButton()}
-            ${this._renderDivider()}
-
-            <div class="cloud-promo" @click=${() => this._saveMode('cloud')}>
-                <div class="cloud-promo-glow"></div>
-                <div class="cloud-promo-header">
-                    <span class="cloud-promo-title">Switch to Cheating Daddy Cloud</span>
-                    <span class="cloud-promo-arrow">&rarr;</span>
-                </div>
-                <div class="cloud-promo-desc">No API keys, no setup, no billing headaches. It just works.</div>
-            </div>
-
-            <div class="mode-links">
-                <button class="mode-link" @click=${() => this._saveMode('local')}>Use local AI</button>
-            </div>
-        `;
-    }
-
-    // ── Local AI mode ──
-
-    _renderLocalMode() {
-        return html`
-            <div class="form-group">
-                <label class="form-label">Ollama Host</label>
-                <input
-                    type="text"
-                    placeholder="http://127.0.0.1:11434"
-                    .value=${this._ollamaHost}
-                    @input=${e => this._saveOllamaHost(e.target.value)}
-                />
-                <div class="form-hint">Ollama must be running locally</div>
-            </div>
-
-            <div class="form-group">
-                <label class="form-label">Ollama Model</label>
-                <input
-                    type="text"
-                    placeholder="llama3.1"
-                    .value=${this._ollamaModel}
-                    @input=${e => this._saveOllamaModel(e.target.value)}
-                />
-                <div class="form-hint">Run <code style="font-family: var(--font-mono); font-size: 11px; background: var(--bg-elevated); padding: 1px 4px; border-radius: 3px;">ollama pull ${this._ollamaModel}</code> first</div>
-            </div>
-
-            <div class="form-group">
-                <div class="whisper-label-row">
-                    <label class="form-label">Whisper Model</label>
-                    ${this.whisperDownloading ? html`<div class="whisper-spinner"></div>` : ''}
-                </div>
-                <select
-                    .value=${this._whisperModel}
-                    @change=${e => this._saveWhisperModel(e.target.value)}
-                >
-                    <option value="Xenova/whisper-tiny" ?selected=${this._whisperModel === 'Xenova/whisper-tiny'}>Tiny (fastest, least accurate)</option>
-                    <option value="Xenova/whisper-base" ?selected=${this._whisperModel === 'Xenova/whisper-base'}>Base</option>
-                    <option value="Xenova/whisper-small" ?selected=${this._whisperModel === 'Xenova/whisper-small'}>Small (recommended)</option>
-                    <option value="Xenova/whisper-medium" ?selected=${this._whisperModel === 'Xenova/whisper-medium'}>Medium (most accurate, slowest)</option>
-                </select>
-                <div class="form-hint">${this.whisperDownloading ? 'Downloading model...' : 'Downloaded automatically on first use'}</div>
-            </div>
-
-            ${this._renderStartButton()}
-            ${this._renderDivider()}
-
-            <div class="cloud-promo" @click=${() => this._saveMode('cloud')}>
-                <div class="cloud-promo-glow"></div>
-                <div class="cloud-promo-header">
-                    <span class="cloud-promo-title">Switch to Cheating Daddy Cloud</span>
-                    <span class="cloud-promo-arrow">&rarr;</span>
-                </div>
-                <div class="cloud-promo-desc">No API keys, no setup, no billing headaches. It just works.</div>
-            </div>
-
-            <div class="mode-links">
-                <button class="mode-link" @click=${() => this._saveMode('byok')}>Use own API keys</button>
-            </div>
         `;
     }
 
@@ -975,23 +835,12 @@ export class MainView extends LitElement {
 
         return html`
             <div class="form-wrapper">
-                ${this._mode === 'local' ? html`
-                    <div class="title-row">
-                        <div class="page-title">Cheating Daddy <span class="mode-suffix">Local AI</span></div>
-                        <button class="help-btn" @click=${() => { this._showLocalHelp = !this._showLocalHelp; }}>${this._showLocalHelp ? closeIcon : helpIcon}</button>
-                    </div>
-                ` : html`
-                    <div class="page-title">
-                        ${this._mode === 'cloud' ? 'Cheating Daddy Cloud' : html`Cheating Daddy <span class="mode-suffix">BYOK</span>`}
-                    </div>
-                `}
+                <div class="page-title">A2</div>
                 <div class="page-subtitle">
-                    ${this._mode === 'cloud' ? 'Enter your invite code to get started' : this._mode === 'byok' ? 'Bring your own API keys' : 'Run models locally on your machine'}
+                    Enter your Groq API key — voice and text powered by Groq only
                 </div>
 
-                ${this._mode === 'cloud' ? this._renderCloudMode() : ''}
-                ${this._mode === 'byok' ? this._renderByokMode() : ''}
-                ${this._mode === 'local' ? (this._showLocalHelp ? this._renderLocalHelp() : this._renderLocalMode()) : ''}
+                ${this._renderGroqMode()}
             </div>
         `;
     }
