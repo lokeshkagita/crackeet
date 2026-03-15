@@ -4,7 +4,7 @@
  */
 
 // IMPORTANT: Change this to your deployed Vercel backend URL
-const BACKEND_URL = 'https://your-crackit-backend.vercel.app';
+const BACKEND_URL = 'https://crackeet.vercel.app';
 
 async function validateSessionCode(code) {
     if (!code || code.trim() === '') {
