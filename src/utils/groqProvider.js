@@ -82,6 +82,7 @@ async function transcribeWithGroqWhisper(pcm16kBuffer) {
     const formData = new FormData();
     formData.append('file', new Blob([wavBuffer], { type: 'audio/wav' }), 'audio.wav');
     formData.append('model', 'whisper-large-v3-turbo');
+    formData.append('language', 'en');
     formData.append('response_format', 'text');
     const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
         method: 'POST',

@@ -494,6 +494,11 @@ export class MainView extends LitElement {
         _openaiKey: { state: true },
         _tokenError: { state: true },
         _keyError: { state: true },
+        // Session code validation
+        _sessionCode: { state: true },
+        _sessionError: { state: true },
+        _sessionSuccess: { state: true },
+        _validatingSession: { state: true },
         // Local AI state
         _ollamaHost: { state: true },
         _ollamaModel: { state: true },
@@ -517,6 +522,10 @@ export class MainView extends LitElement {
         this._openaiKey = '';
         this._tokenError = false;
         this._keyError = false;
+        this._sessionCode = '';
+        this._sessionError = '';
+        this._sessionSuccess = false;
+        this._validatingSession = false;
         this._showLocalHelp = false;
         this._ollamaHost = 'http://127.0.0.1:11434';
         this._ollamaModel = 'llama3.1';
@@ -747,6 +756,41 @@ export class MainView extends LitElement {
         this.onProfileChange(e.target.value);
     }
 
+    // ── Session code validation ──
+
+    async _validateSessionCode() {
+        if (!this._sessionCode.trim()) {
+            this._sessionError = 'Please enter an access code';
+            this.requestUpdate();
+            return;
+        }
+
+        this._validatingSession = true;
+        this._sessionError = '';
+        this.requestUpdate();
+
+        try {
+            const result = await cheatingDaddy.storage.validateSessionCode(this._sessionCode.trim());
+
+            if (result.success) {
+                this._sessionSuccess = true;
+                this._sessionError = '';
+                // The groq key is stored automatically by the IPC handler
+                this._groqKey = result.groqApiKey;
+                this.requestUpdate();
+            } else {
+                this._sessionError = result.error || 'Invalid access code';
+                this._sessionSuccess = false;
+            }
+        } catch (err) {
+            this._sessionError = 'Connection error. Check your internet.';
+            this._sessionSuccess = false;
+        }
+
+        this._validatingSession = false;
+        this.requestUpdate();
+    }
+
     // ── Start ──
 
     _handleStart() {
@@ -808,29 +852,40 @@ export class MainView extends LitElement {
     // ── Groq-only mode ──
 
     _renderGroqMode() {
-        // If key is already set (from session code), just show start button
+        // If key is already set (from session code validation), show start button
         if (this._groqKey && this._groqKey.trim()) {
             return html`
+                ${this._sessionSuccess ? html`<div style="color: var(--success); font-size: var(--font-size-xs); text-align: center;">Access code verified</div>` : ''}
                 ${this._renderStartButton()}
             `;
         }
 
+        // Show access code input for validation
         return html`
             <div class="form-group">
-                <label class="form-label">Groq API Key</label>
+                <label class="form-label">Access Code</label>
                 <input
-                    type="password"
-                    placeholder="gsk_..."
-                    .value=${this._groqKey}
-                    @input=${e => this._saveGroqKey(e.target.value)}
-                    class=${this._keyError ? 'error' : ''}
+                    type="text"
+                    placeholder="e.g. CRACK-7X9K"
+                    .value=${this._sessionCode}
+                    @input=${e => { this._sessionCode = e.target.value; this._sessionError = ''; this._sessionSuccess = false; this.requestUpdate(); }}
+                    @keydown=${e => { if (e.key === 'Enter') this._validateSessionCode(); }}
+                    class=${this._sessionError ? 'error' : ''}
+                    style="text-transform: uppercase; letter-spacing: 1px; font-weight: 600; text-align: center;"
                 />
-                <div class="form-hint">
-                    <span class="link" @click=${() => this.onExternalLink('https://console.groq.com/keys')}>Get Groq API key</span>
-                </div>
+                ${this._sessionError ? html`<div style="color: var(--danger); font-size: var(--font-size-xs);">${this._sessionError}</div>` : ''}
             </div>
 
-            ${this._renderStartButton()}
+            <button
+                class="start-button ${this._validatingSession ? 'disabled' : ''}"
+                @click=${() => this._validateSessionCode()}
+            >
+                <canvas class="btn-aurora"></canvas>
+                <canvas class="btn-dither"></canvas>
+                <span class="btn-label">
+                    ${this._validatingSession ? 'Validating...' : 'Verify'}
+                </span>
+            </button>
         `;
     }
 
@@ -846,7 +901,7 @@ export class MainView extends LitElement {
             <div class="form-wrapper">
                 <div class="page-title">A2</div>
                 <div class="page-subtitle">
-                    ${hasKey ? 'Session ready. Click start to begin.' : 'Enter your Groq API key — voice and text powered by Groq only'}
+                    ${hasKey ? 'Session ready. Click start to begin.' : 'Enter your access code to get started'}
                 </div>
 
                 ${this._renderGroqMode()}

@@ -708,7 +708,6 @@ export class CustomizeView extends LitElement {
                 <div class="unified-wrap">
                     <div class="page-title">Settings</div>
                     ${this.renderAudioSection()}
-                    ${this.renderLanguageSection()}
                     ${this.renderAppearanceSection()}
                     ${this.renderKeyboardSection()}
                     ${this.renderPrivacySection()}
